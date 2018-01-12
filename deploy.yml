@@ -1,0 +1,53 @@
+
+---
+- name: installing python, flask and database
+  hosts: aws
+  become: true
+  become_user: root
+  gather_facts: true
+  
+  vars:
+    host_dns: ec2-34-205-31-233.compute-1.amazonaws.com
+
+
+  tasks:
+    - name: "Install apache2, python-pip and MySQL Database for our application"
+      package: name={{item}} state=present
+      with_items:
+      - apache2
+      - libapache2-mod-wsgi
+      - python-pip
+      - mysql-server
+      - python-mysqldb
+ 
+    - name: "Installing flask and other requirements"
+      pip: name={{item}} state=present
+      with_items:
+      - flask
+      - flask_wtf
+      - wtforms
+    - name: "Create user nkumar for Database"
+      mysql_user: user=nkumar password=nkumar123 priv=*.*:ALL state=present
+    - name: "Create database PythonDB"
+      mysql_db: db=pythondb state=present
+    - name: "Create a table usertest"
+      command: mysql -u nkumar -pnkumar123 -e 'create table usertest(name varchar(100),color varchar(30),pet varchar(20),unique(name));' pythondb
+
+    - name: create a directory
+      action: file state=directory path=/flaskapp mode=0777
+      
+    - name: create a symbolic link to the directory created above
+      action: file state=link src=/flaskapp dest=/var/www/html/flaskapp
+
+
+    - name: "copy flask application files from local host"
+      local_action: command sudo scp -i nkumar1.pem -r ./flaskapp/. ubuntu@{{ host_dns }}:/flaskapp/
+
+    - name: "copy configuration file"
+      command: cp -rf /flaskapp/000-default.conf /etc/apache2/sites-enabled/
+
+    - name: "restart apache with new configuration"
+      command: apachectl restart
+
+
+

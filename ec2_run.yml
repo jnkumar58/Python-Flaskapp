@@ -1,0 +1,71 @@
+---
+  - name: Creating an EC2 Instance
+    hosts: local
+    connection: local
+    gather_facts: False
+
+    # Necessary Variables for creating/provisioning the EC2 Instance
+    vars:
+      instance_type: t2.micro
+      security_group: sgormuco #security group name here, if group is not present it will create a new group
+      image: ami-da05a4a0 # Ubuntu AMI Name
+      keypair: nkumar1 # PEM file name created in AWS
+      region: us-east-1 # Region name
+      count: 1
+
+    # Task for creating the security group and a new instance
+    tasks:
+
+      - name: Create a security group
+        local_action: 
+          module: ec2_group
+          name: "{{ security_group }}"
+          description: Security Group for my application
+          region: "{{ region }}"
+          rules:
+            - proto: tcp
+              from_port: 22
+              to_port: 22
+              cidr_ip: 0.0.0.0/0
+            - proto: tcp
+              from_port: 80
+              to_port: 80
+              cidr_ip: 0.0.0.0/0
+            - proto: tcp
+              from_port: 443
+              to_port: 443
+              cidr_ip: 0.0.0.0/0
+          rules_egress:
+            - proto: all
+              cidr_ip: 0.0.0.0/0
+        register: basic_firewall
+
+      - name: Launch the new EC2 Instance with given parmeters
+        local_action: ec2 
+                      group={{ security_group }} 
+                      instance_type={{ instance_type}} 
+                      image={{ image }} 
+                      wait=true 
+                      region={{ region }} 
+                      keypair={{ keypair }}
+                      count={{count}}
+        register: ec2
+
+
+      - name: Adding the Public IP of created instances to the host file under group "AWS"
+        lineinfile:
+          dest: /etc/ansible/hosts
+          regexp: '^.* created_host'
+          insertafter: "[aws]"
+          line: "{{ item.public_ip }}"
+          state: present
+        with_items: "{{ ec2.instances }}"
+      - pause:
+          minutes: 2
+      
+     
+      - name: Show the public ip and dns name for each EC2 instance
+        debug: msg="Public IP {{ item.public_ip }} DNS NAME {{ item.public_dns_name }}"
+        with_items: "{{ ec2.instances }}"
+
+
